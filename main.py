@@ -54,7 +54,7 @@ from constants import (
     DIVS_SCHEDULE,
     SVG_RESTAURANT_RATING,
 
-    DIVS_REVIEWS,
+    DIV_REVIEW_CONTAINER,
     SPAN_LANGUAGE_FILTER_ALL,
     INPUT_LANGUAGE_FILTER_ALL,
     DIV_AVATAR,
@@ -191,20 +191,17 @@ def get_urls_restaurants(driver: webdriver.Chrome) -> list[str]:
 
 def collect_all_restaurant_data(driver: webdriver.Chrome,
                                 url: str,
-                                keys: list[str] = None,
-                                values: list[list[str]] = None
-                                ) -> tuple[list[str], list[list[str]]]:
-    """ Load restaurant url and collect all restaurant data.
-    Nested functions will fill keys and values lists.
-    """
+                                restaurant_data: dict = None
+                                ) -> dict:
+    """ Directing restaurant url and collect all restaurant data in dictionary """
 
-    # if keys and values was not pass as args, define new lists
-    if not keys and not values:
-        keys = []
-        values = []
+    # if restaurant data was not pass as args, define new dict
+    if restaurant_data is None:
+        restaurant_data = {}
 
     # get restaurant ID using regular expression
     id_restaurant = re.search(r'(?<=-d)\d+(?=-)', url).group(0)
+    restaurant_data['id'] = id_restaurant
 
     # load restaurant page
     driver.get(url)
@@ -224,22 +221,19 @@ def collect_all_restaurant_data(driver: webdriver.Chrome,
         # rating number in search
         try:
             rating_number = driver.find_element(*B_RATING_NUMBER).text
-            keys.append('number')
-            values.append([id_restaurant, rating_number])
+            restaurant_data['number'] = rating_number
         except NoSuchElementException:
             pass
 
         # name of restaurant
         try:
             name = driver.find_element(*H1_NAME).text
-            keys.append('name')
-            values.append([id_restaurant, name])
+            restaurant_data['name'] = name
         except NoSuchElementException:
             pass
 
         # restaurant url
-        keys.append('URL')
-        values.append([id_restaurant, URL])
+        restaurant_data['URL'] = URL
 
         # url for menu
         try:
@@ -248,8 +242,7 @@ def collect_all_restaurant_data(driver: webdriver.Chrome,
                 ec.element_to_be_clickable(A_MENU)
             )
             url_menu = a_menu.get_attribute('href')
-            keys.append('menu')
-            values.append([id_restaurant, url_menu])
+            restaurant_data['menu'] = url_menu
         except TimeoutException:
             pass
 
@@ -267,30 +260,40 @@ def collect_all_restaurant_data(driver: webdriver.Chrome,
             for div_working_hours in driver.find_elements(*DIVS_SCHEDULE):
                 # split str by "\n", put in weekday first value and others in times_ranges
                 weekday, *times_ranges = div_working_hours.text.splitlines()
-                # getting only Sun and Sat values
+
+                # getting only Sunday and Saturday schedule
                 if weekday.lower() in ('sun', 'sat', 'вс', 'cб'):
+                    # check if hours not exists as key
+                    if not restaurant_data.get('hours'):
+                        restaurant_data['hours'] = {}
+
+                    # define list for this weekday to append time ranges
+                    restaurant_data['hours'][weekday] = []
                     # iterating over times_ranges (restaurant may close and open multiple times in one day)
                     for time_range in times_ranges:
                         # split every time_range from open time to close time
                         parts_time_range = time_range.split(' - ')
-                        keys.append('hours')
-                        values.append([id_restaurant, weekday, *parts_time_range])
+                        restaurant_data['hours'][weekday].append(parts_time_range)
+
             # close schedule
             driver.find_element(*BUTTON_POPUP_SCHEDULE).click()
 
         # restaurant rating
         try:
             restaurant_rating = driver.find_element(*SVG_RESTAURANT_RATING).get_attribute('aria-label')
-            keys.append('restaurant rating')
-            values.append([id_restaurant, restaurant_rating])
+            restaurant_data['restaurant rating'] = restaurant_rating
         except NoSuchElementException:
             pass
 
     def get_reviews_info():
         """ Collect reviews for this restaurant. Append values to already existing lists """
 
+        # append dict with key reviews where keys will be like user_id
+        restaurant_data['reviews'] = {}
+        # define counters for better logging
         page = 1
         reviews_per_restaurant = 0
+
         while True:
             # check if langauge filter was selected to ALL languages
             if not driver.find_element(*INPUT_LANGUAGE_FILTER_ALL).is_selected():
@@ -314,12 +317,21 @@ def collect_all_restaurant_data(driver: webdriver.Chrome,
             # define counter to log how many reviews collected
             reviews_from_page = 0
             # iterate over every div review on page
-            for div_review in driver.find_elements(*DIVS_REVIEWS):
+            for div_review in driver.find_elements(*DIV_REVIEW_CONTAINER):
                 # check if max reviews for restaurant already collected
-                if MAX_REVIEWS_PER_RESTAURANT == reviews_per_restaurant:
-                    logging.info(f'Collected {reviews_per_restaurant} reviews for {id_restaurant=}.'
+                if MAX_REVIEWS_PER_RESTAURANT == len(restaurant_data['reviews']):
+                    logging.info(f'Collected {len()} reviews for {id_restaurant=}.'
                                  f' from {page=} new reviews {reviews_from_page}')
                     return
+
+                # user id from <div data-reviewid="some_id">
+                id_review = div_review.find_element(*DIV_ID_USER).get_attribute('data-reviewid')
+
+                # check if review was already appended
+                if id_review in restaurant_data['reviews']:
+                    continue
+                # append id_review to dict
+                restaurant_data['reviews'][id_review] = {}
 
                 # scroll to reviewer avatar
                 ActionChains(driver).move_to_element(
@@ -334,37 +346,24 @@ def collect_all_restaurant_data(driver: webdriver.Chrome,
                 time.sleep(SLEEP_REVIEW_INFO)
 
                 # wait until reviewer info loads
-                time.sleep(SLEEP_WAIT_LOADING_TAG)
-                timer_reviewer_info = time.time()
-                while time.time() - timer_reviewer_info < TIMEOUT_REVIEWER_INFO:
-                    try:
-                        driver.find_element(*DIV_LOADING_REVIEWER_INFO)
-                    except NoSuchElementException:
-                        break
-                else:
-                    driver.refresh()
-
-                # user id from <div data-reviewid="some_id">
-                id_user = div_review.find_element(*DIV_ID_USER).get_attribute('data-reviewid')
+                if wait_loop_with_timeout(driver, DIV_LOADING_REVIEWER_INFO, restaurant_data):
+                    return restaurant_data
 
                 # username from <h3>
                 username = div_review.find_element(*H3_USERNAME).text
-                keys.append('username')
-                values.append([id_restaurant, id_user, username])
+                restaurant_data['reviews'][id_review]['username'] = username
 
                 # count of reviews from this user
                 count_reviews_user = driver.find_element(*SPAN_COUNT_CONTRIBUTIONS).text
                 # get only numeric value
                 count_reviews_user = count_reviews_user.split()[0]
-                keys.append('countsReview')
-                values.append([id_restaurant, id_user, count_reviews_user])
+                restaurant_data['reviews'][id_review]['countsReview'] = count_reviews_user
 
                 # count of excellent reviews from this user
                 try:
                     count_excellent_reviews = driver.find_element(*SPAN_EXCELLENT_REVIEWS).text
                     # count_excellent_reviews = count_excellent_reviews.strip()
-                    keys.append('countExcellent')
-                    values.append([id_restaurant, id_user, count_excellent_reviews])
+                    restaurant_data['reviews'][id_review]['countExcellent'] = count_excellent_reviews
                 except NoSuchElementException:
                     pass
 
@@ -400,13 +399,11 @@ def collect_all_restaurant_data(driver: webdriver.Chrome,
 
                 # text of review
                 text = div_review.find_element(*P_REVIEW_TEXT).text
-                keys.append('review text')
-                values.append([id_restaurant, id_user, text])
+                restaurant_data['reviews'][id_review]['review text'] = text
 
                 # date of visit
                 date_of_visit = div_review.find_element(*DIV_DATE_VISIT).text
-                keys.append('date of visit')
-                values.append([id_restaurant, id_user, date_of_visit])
+                restaurant_data['reviews'][id_review]['date of visit'] = date_of_visit
 
                 # translation
                 try:
@@ -420,20 +417,14 @@ def collect_all_restaurant_data(driver: webdriver.Chrome,
 
                 if is_translation_exists:
                     # while loading tag is located on page, running through loop
-                    while True:
-                        try:
-                            driver.find_element(*DIV_LOADING_REVIEWER_INFO)
-                        except NoSuchElementException:
-                            # sleep after loading finishes to ,
-                            time.sleep(SLEEP_WAIT_LOADING_TAG)
-                            break
+                    if wait_loop_with_timeout(driver, DIV_LOADING_REVIEWER_INFO, restaurant_data):
+                        return restaurant_data
 
                     # getting translated text of review
                     text_translation = WebDriverWait(driver, timeout=WAIT_TRANSLATION_TEXT).until(
                         ec.presence_of_element_located(DIV_TRANSLATION)
                     ).text
-                    keys.append('translation')
-                    values.append([id_restaurant, id_user, text_translation])
+                    restaurant_data['reviews'][id_review]['translation'] = text_translation
 
                     # close overlay with translation
                     WebDriverWait(driver, timeout=WAIT_CLOSE_TRANSLATION).until(
@@ -445,7 +436,6 @@ def collect_all_restaurant_data(driver: webdriver.Chrome,
                 reviews_per_restaurant += 1
 
             # append data to excel
-            to_excel(keys, values)
             logging.info(f'{reviews_per_restaurant} reviews for {id_restaurant=}.'
                          f' from {page=} new reviews {reviews_from_page}')
 
@@ -464,7 +454,28 @@ def collect_all_restaurant_data(driver: webdriver.Chrome,
 
     get_restaurant_info()
     get_reviews_info()
-    return keys, values
+    return restaurant_data
+
+
+def wait_loop_with_timeout(driver: webdriver.Chrome,
+                           element_path: tuple[str, str],
+                           restaurant_data: dict
+                           ) -> dict | None:
+    time.sleep(SLEEP_WAIT_LOADING_TAG)
+    timer_reviewer_info = time.time()
+    while time.time() - timer_reviewer_info < TIMEOUT_REVIEWER_INFO:
+        try:
+            driver.find_element(*element_path)
+        except NoSuchElementException:
+            time.sleep(SLEEP_WAIT_LOADING_TAG)
+            return
+    else:
+        url = driver.current_url
+        driver.quit()
+        del driver
+        driver = get_driver()
+        logging.info('Browser was rebooted!')
+        return collect_all_restaurant_data(driver, url, restaurant_data)
 
 
 def collect_data():
@@ -477,7 +488,8 @@ def collect_data():
 
         for i, url_restaurant in enumerate(urls_restaurants):
             logging.info(f'{i+1}/{len(urls_restaurants)} START scrapping {url_restaurant}')
-            collect_all_restaurant_data(driver, url_restaurant)
+            restaurant_data = collect_all_restaurant_data(driver, url_restaurant)
+            to_excel(restaurant_data)
             logging.info(f'{i+1}/{len(urls_restaurants)} END scrapping {url_restaurant=}')
         logging.info('\n')
 

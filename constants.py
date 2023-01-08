@@ -7,7 +7,7 @@ URL: str = 'https://www.tripadvisor.com/Restaurants-g187314-Augsburg_Swabia_Bava
 # max count of restaurants to scrap
 MAX_RESTAURANTS_COUNT: int = 30
 # max count of review per restaurant to scrap
-MAX_REVIEWS_PER_RESTAURANT: int = 30
+MAX_REVIEWS_PER_RESTAURANT: int = 1000
 # extension of output file
 OUTPUT_EXTENSION: str = '.xlsx'
 # filename of output file
@@ -86,7 +86,7 @@ INPUT_LANGUAGE_FILTER_ALL = (By.XPATH, '//div[@data-param="filterLang"]//input[@
 # <div> which has style display while loading list of reviews
 DIV_LOADING_LIST_REVIEWS = (By.XPATH, '//div[@class="loadingBox"]/parent::div[@id]')
 # tags <div> reviews
-DIVS_REVIEWS = (By.CLASS_NAME, 'review-container')
+DIV_REVIEW_CONTAINER = (By.CLASS_NAME, 'review-container')
 # <div> avatar of reviewer. relative search in div_review defined above
 DIV_AVATAR = (By.CLASS_NAME, 'ui_avatar')
 # <span> appears in the bottom of page after clicking on reviewer avatar
