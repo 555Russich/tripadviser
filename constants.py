@@ -1,5 +1,5 @@
 from selenium.webdriver.common.by import By
-
+from pathlib import Path
 
 """ Input settings """
 # directing this link first
@@ -7,11 +7,15 @@ URL: str = 'https://www.tripadvisor.com/Restaurants-g187314-Augsburg_Swabia_Bava
 # max count of restaurants to scrap
 MAX_RESTAURANTS_COUNT: int = 30
 # max count of review per restaurant to scrap
-MAX_REVIEWS_PER_RESTAURANT: int = 1000
+MAX_REVIEWS_PER_RESTAURANT: int = 30
 # extension of output file
 OUTPUT_EXTENSION: str = '.xlsx'
-# filename of output file
+# string representation of filename for output file
 OUTPUT_FILEPATH: str = r'output'
+# is appending data to existing file
+APPEND_FILE: bool = True
+# define filepath for output file
+FILEPATH: Path = Path(OUTPUT_FILEPATH).with_suffix(OUTPUT_EXTENSION)
 
 """ Driver settings """
 # headless mode

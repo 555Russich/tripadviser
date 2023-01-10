@@ -15,12 +15,14 @@ from selenium.common.exceptions import (
 from webdriver_manager.chrome import ChromeDriverManager
 
 from my_logging import get_logger
-from out_methods import to_excel
+from in_out_methods import to_excel
 from constants import (
     URL,
     MAX_RESTAURANTS_COUNT,
     MAX_REVIEWS_PER_RESTAURANT,
     OUTPUT_EXTENSION,
+    OUTPUT_FILEPATH,
+    APPEND_FILE,
 
     IS_HEADLESS,
     WAIT_IMPLICITLY,
@@ -73,46 +75,6 @@ from constants import (
     DIV_CLOSE_TRANSLATION,
 
 )
-
-
-def check_input_values():
-    """ Check input variables """
-
-    # Check variable URL is object of str class and starts like link to tripadvisor
-    if isinstance(URL, str):
-        if URL.startswith('https://www.tripadvisor'):
-            pass
-        else:
-            logging.error(f'{URL=}\nURL should be directing to tripadvisor domain.')
-            exit()
-    else:
-        logging.error(f'{URL=}\nExpected variable URL with type str.')
-        exit()
-
-    # Check variable RESTAURANTS_COUNT is object of int class
-    if not isinstance(MAX_RESTAURANTS_COUNT, int):
-        logging.error(f'{MAX_RESTAURANTS_COUNT=}\nExpected variable RESTAURANTS_COUNT with type int.')
-        exit()
-
-    # Check variable MAX_REVIEWS_PER_RESTAURANT is object of int class
-    if not isinstance(MAX_REVIEWS_PER_RESTAURANT, int):
-        logging.error(f'{MAX_REVIEWS_PER_RESTAURANT=}\nExpected variable MAX_REVIEWS_PER_RESTAURANT with type int.')
-        exit()
-
-    # Check variable OUTPUT_EXTENSION is object of str and starts with dot
-    if isinstance(OUTPUT_EXTENSION, str):
-        if OUTPUT_EXTENSION.startswith('.'):
-            if OUTPUT_EXTENSION in ('.xlsx', '.xml'):
-                pass
-            else:
-                logging.error(f'{OUTPUT_EXTENSION=}\nExpected variable OUTPUT_EXTENSION would be ".xlsx" or ".xml"')
-                exit()
-        else:
-            logging.error(f'{OUTPUT_EXTENSION=}\nExpected variable OUTPUT_EXTENSION starts with dot.')
-            exit()
-    else:
-        logging.error(f'{OUTPUT_EXTENSION=}\nExpected variable OUTPUT_EXTENSION with type str.')
-        exit()
 
 
 def get_driver() -> webdriver.Chrome:
@@ -298,7 +260,9 @@ def collect_all_restaurant_data(driver: webdriver.Chrome,
             # check if langauge filter was selected to ALL languages
             if not driver.find_element(*INPUT_LANGUAGE_FILTER_ALL).is_selected():
                 # change language filter to all
-                driver.find_element(*SPAN_LANGUAGE_FILTER_ALL).click()
+                WebDriverWait(driver, timeout=10).until(
+                    ec.element_to_be_clickable(SPAN_LANGUAGE_FILTER_ALL)
+                ).click()
                 # mini-sleep to wait div loading located on page
                 time.sleep(SLEEP_WAIT_LOADING_TAG)
                 # wait until reviews block is loading after apply filter
@@ -318,9 +282,13 @@ def collect_all_restaurant_data(driver: webdriver.Chrome,
             reviews_from_page = 0
             # iterate over every div review on page
             for div_review in driver.find_elements(*DIV_REVIEW_CONTAINER):
+                # define dict which contains information about one review
+                review_data = {}
+
                 # check if max reviews for restaurant already collected
-                if MAX_REVIEWS_PER_RESTAURANT == len(restaurant_data['reviews']):
-                    logging.info(f'Collected {len()} reviews for {id_restaurant=}.'
+                count_reviews_per_restaurant = len(restaurant_data['reviews'])
+                if MAX_REVIEWS_PER_RESTAURANT == count_reviews_per_restaurant:
+                    logging.info(f'Collected {count_reviews_per_restaurant} reviews for {id_restaurant=}.'
                                  f' from {page=} new reviews {reviews_from_page}')
                     return
 
@@ -330,8 +298,6 @@ def collect_all_restaurant_data(driver: webdriver.Chrome,
                 # check if review was already appended
                 if id_review in restaurant_data['reviews']:
                     continue
-                # append id_review to dict
-                restaurant_data['reviews'][id_review] = {}
 
                 # scroll to reviewer avatar
                 ActionChains(driver).move_to_element(
@@ -351,19 +317,19 @@ def collect_all_restaurant_data(driver: webdriver.Chrome,
 
                 # username from <h3>
                 username = div_review.find_element(*H3_USERNAME).text
-                restaurant_data['reviews'][id_review]['username'] = username
+                review_data['username'] = username
 
                 # count of reviews from this user
                 count_reviews_user = driver.find_element(*SPAN_COUNT_CONTRIBUTIONS).text
                 # get only numeric value
                 count_reviews_user = count_reviews_user.split()[0]
-                restaurant_data['reviews'][id_review]['countsReview'] = count_reviews_user
+                review_data['countsReview'] = count_reviews_user
 
                 # count of excellent reviews from this user
                 try:
                     count_excellent_reviews = driver.find_element(*SPAN_EXCELLENT_REVIEWS).text
                     # count_excellent_reviews = count_excellent_reviews.strip()
-                    restaurant_data['reviews'][id_review]['countExcellent'] = count_excellent_reviews
+                    review_data['countExcellent'] = count_excellent_reviews
                 except NoSuchElementException:
                     pass
 
@@ -399,11 +365,11 @@ def collect_all_restaurant_data(driver: webdriver.Chrome,
 
                 # text of review
                 text = div_review.find_element(*P_REVIEW_TEXT).text
-                restaurant_data['reviews'][id_review]['review text'] = text
+                review_data['review text'] = text
 
                 # date of visit
                 date_of_visit = div_review.find_element(*DIV_DATE_VISIT).text
-                restaurant_data['reviews'][id_review]['date of visit'] = date_of_visit
+                review_data['date of visit'] = date_of_visit
 
                 # translation
                 try:
@@ -424,16 +390,18 @@ def collect_all_restaurant_data(driver: webdriver.Chrome,
                     text_translation = WebDriverWait(driver, timeout=WAIT_TRANSLATION_TEXT).until(
                         ec.presence_of_element_located(DIV_TRANSLATION)
                     ).text
-                    restaurant_data['reviews'][id_review]['translation'] = text_translation
+                    review_data['translation'] = text_translation
 
                     # close overlay with translation
                     WebDriverWait(driver, timeout=WAIT_CLOSE_TRANSLATION).until(
                         ec.element_to_be_clickable(DIV_CLOSE_TRANSLATION)
                     ).click()
 
-                # counters
+                    # append review to restaurant dict
+                    restaurant_data['reviews'][id_review] = review_data
+
+                # counter for current page of reviews
                 reviews_from_page += 1
-                reviews_per_restaurant += 1
 
             # append data to excel
             logging.info(f'{reviews_per_restaurant} reviews for {id_restaurant=}.'
@@ -479,7 +447,6 @@ def wait_loop_with_timeout(driver: webdriver.Chrome,
 
 
 def collect_data():
-    check_input_values()
     driver = get_driver()
     try:
         driver.get(URL)
@@ -496,6 +463,9 @@ def collect_data():
     except Exception as ex:
         logging.error(ex, exc_info=True)
         driver.save_screenshot('debug.png')
+        with open('debug.html', 'w') as f:
+            f.write(driver.page_source)
+        logging.info('END')
         time.sleep(999)
     finally:
         driver.quit()
