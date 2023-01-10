@@ -1,13 +1,15 @@
+# selenium constants for element path
 from selenium.webdriver.common.by import By
+# to create filepath which not OS dependency
 from pathlib import Path
 
 """ Input settings """
 # directing this link first
-URL: str = 'https://www.tripadvisor.com/Restaurants-g187314-Augsburg_Swabia_Bavaria.html'
+URL: str = 'https://www.tripadvisor.ru/Restaurants-g187314-Augsburg_Swabia_Bavaria.html'
 # max count of restaurants to scrap
 MAX_RESTAURANTS_COUNT: int = 30
 # max count of review per restaurant to scrap
-MAX_REVIEWS_PER_RESTAURANT: int = 30
+MAX_REVIEWS_PER_RESTAURANT: int = 100
 # extension of output file
 OUTPUT_EXTENSION: str = '.xlsx'
 # string representation of filename for output file
@@ -26,38 +28,46 @@ WAIT_IMPLICITLY: int = 0
 
 """ SLEEPS AND WAITS """
 # just sleeps from time module. These sleeps block main thread
-# time.sleep() while loading search page
+# sleep while loading search page
 SLEEP_SEARCH: int = 0
-# time.sleep() while loading restaurant page
+# sleep while loading restaurant page
 SLEEP_RESTAURANT: int = 0
-# time.sleep() while page with reviews loading
+# sleep while page with reviews loading
 SLEEP_REVIEWS_PAGE: int = 0
-# time.sleep() while loading reviewer info
+# sleep while loading reviewer info
 SLEEP_REVIEW_INFO: int = 0
-# time.sleep() to wait until tag which will define loading is located on page.
+# sleep to wait until tag which will define loading is located on page.
 SLEEP_WAIT_LOADING_TAG: float = 0.1
 
 # explicit wait https://www.selenium.dev/documentation/webdriver/waits/#explicit-wait
 # waiting if <span class="nav next disabled"> is located on page
 WAIT_IS_LAST_PAGE: int = 1
 # wait until restaurant name is located on page
-WAIT_RESTAURANT_NAME: int = 5
+WAIT_RESTAURANT_NAME: int = 3
 # wait for menu url
 WAIT_MENU_URL: int = 2
 # wait for avatar to be clickable
-WAIT_AVATAR: int = 1
+WAIT_AVATAR: int = 3
+# wait for username
+WAIT_USERNAME: int = 3
 # wait to close the reviewer info
-WAIT_CLOSE_REVIEWER_INFO: int = 1
+WAIT_CLOSE_REVIEWER_INFO: int = 3
 # wait text of translation
 WAIT_TRANSLATION_TEXT: int = 10
 # wait to close translation overlay
 WAIT_CLOSE_TRANSLATION: int = 1
+# wait button change filter
+WAIT_CHANGE_FILTER: int = 3
+# wait page number
+WAIT_PAGE_NUMBER: int = 10
 
-# Custom timeouts
-TIMEOUT_REVIEWER_INFO: int = 30
-
+# timeout if some element located/not located on page too long
+TIMEOUT_LOADING: int = 20
 
 """ Elements attributes to locate them """
+# page title
+TITLE = (By.TAG_NAME, 'title')
+
 # tags <a> on search page to get restaurants hrefs
 A_RESTAURANTS_HREFS = (By.XPATH, '//a[@class="Lwqic Cj b"]')
 # <a> on search page to open next search page
@@ -66,7 +76,9 @@ A_NEXT_SEARCH_PAGE = (By.XPATH, '//a[@class="nav next rndBtn ui_button primary t
 SPAN_IS_LAST_SEARCH_PAGE = (By.XPATH, '//span[@class="nav next disabled"]')
 # <a> on restaurant page to open next page with reviews. If page is last,
 # this tag has class "disabled"
-A_NEXT_REVIEWS_PAGE = (By.XPATH, '//a[@class="nav next ui_button primary"]')
+A_NEXT_REVIEWS_PAGE = (By.XPATH, '//a[contains(@class, "nav next ui_button primary")]')
+# <span> on search page, <a> on restaurant page
+CURRENT_PAGE_NUMBER = (By.XPATH, '//*[contains(@class, "current")][@data-page-number]')
 
 # <a> with href to restaurant menu
 A_MENU = (By.XPATH, '//span[@class="DsyBj cNFrA AsyOO"]/span/following-sibling::a[@href]')
@@ -104,7 +116,7 @@ DIV_ID_USER = (By.XPATH, './/div[@data-reviewid]')
 H3_USERNAME = (By.XPATH, '//span[contains(@class, "ui_overlay ui_popover")]//h3')
 # <span> with count contributions
 SPAN_COUNT_CONTRIBUTIONS = (By.XPATH, '//span[contains(@class, "ui_overlay ui_popover")]'
-                                      '//span[@class="badgeTextReviewEnhancements"][contains(text(), "Contribution")]'
+                                      '//span[@class="badgeTextReviewEnhancements"]'
                             )
 # <span> with count of excellent reviews from this user
 SPAN_EXCELLENT_REVIEWS = (By.XPATH,
