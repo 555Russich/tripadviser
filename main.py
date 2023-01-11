@@ -42,6 +42,7 @@ from constants import (
     SLEEP_REVIEWS_PAGE,
     SLEEP_REVIEW_INFO,
     SLEEP_WAIT_LOADING_TAG,
+    SLEEP_DRIVER_REFRESH,
 
     WAIT_IS_LAST_PAGE,
     WAIT_RESTAURANT_NAME,
@@ -320,14 +321,9 @@ def get_reviews_info(driver: webdriver.Chrome,
         # iterate over every div review on page
         for div_review in driver.find_elements(*DIV_REVIEW_CONTAINER):
 
-            # check if max reviews for restaurant already collected
-            if MAX_REVIEWS_PER_RESTAURANT == count_reviews:
-                logging.info(f'Collected {count_reviews} reviews for {id_restaurant=}.'
-                             f' From {page=} new reviews {count_reviews - count_reviews_before}')
-                return reviews_data
-
-            # check if already collected this page
-            if page_before and page < page_before:
+            # check if max reviews OR current page for restaurant already collected
+            if MAX_REVIEWS_PER_RESTAURANT == count_reviews or \
+                    (page_before and page < page_before):
                 continue
 
             # get data for one review
@@ -335,6 +331,7 @@ def get_reviews_info(driver: webdriver.Chrome,
                 id_review, review_data = get_one_review(driver, div_review)
                 # append review data to restaurant data
                 reviews_data[id_review] = review_data
+                count_reviews = len(reviews_data)
             except Exception:
                 # reload page
                 driver.refresh()
@@ -350,6 +347,7 @@ def get_reviews_info(driver: webdriver.Chrome,
                     # delete driver object from memory
                     del driver
                     logging.info(f'Access denied, rebooting browser. {url_before=}')
+                    time.sleep(SLEEP_DRIVER_REFRESH)
                     # get new driver
                     driver = get_driver()
                     # directing to previous URL
@@ -359,12 +357,11 @@ def get_reviews_info(driver: webdriver.Chrome,
                     # any other exception shouldn't be handled for now
                     raise
         else:
-            count_reviews = len(reviews_data)
             logging.info(f'Collected {count_reviews} reviews for {id_restaurant=}.'
                          f' From {page=} new reviews {count_reviews - count_reviews_before}')
 
-            # return if page is only one
-            if is_only_one_page:
+            # return if page is only one OR if reviews count is equal max limit
+            if is_only_one_page or MAX_REVIEWS_PER_RESTAURANT == count_reviews:
                 return reviews_data
 
             # moving to button next page

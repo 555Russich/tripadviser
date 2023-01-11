@@ -38,6 +38,8 @@ SLEEP_REVIEWS_PAGE: int = 5
 SLEEP_REVIEW_INFO: int = 1
 # sleep to wait until tag which will define loading is located on page.
 SLEEP_WAIT_LOADING_TAG: float = 0.1
+# sleep after driver quited
+SLEEP_DRIVER_REFRESH: int = 10
 
 # explicit wait https://www.selenium.dev/documentation/webdriver/waits/#explicit-wait
 # waiting if <span class="nav next disabled"> is located on page
