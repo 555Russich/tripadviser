@@ -122,12 +122,8 @@ def get_urls_restaurants(driver: webdriver.Chrome) -> list[str]:
         # get count of collected urls to compare after finding elements
         count_urls_before = len(urls_restaurants)
 
-        # get current page number
-        page = WebDriverWait(driver, timeout=WAIT_PAGE_NUMBER).until(
-            ec.presence_of_element_located(CURRENT_PAGE_NUMBER)
-        ).text
-        # str to int
-        page = int(page)
+        # if page is single there is no button for next page
+        is_only_one_page, page = is_single_page(driver)
 
         # while FIRST search page loading, first located list of restaurants that we needed,
         # after that list is loading "Delivery Available", "Outdoor Seating Available" etc...
@@ -156,6 +152,10 @@ def get_urls_restaurants(driver: webdriver.Chrome) -> list[str]:
             continue
         logging.info(f'{page=}. Collected {len(urls_restaurants)} restaurants urls')
 
+        # if page is single return collected urls
+        if is_only_one_page:
+            return urls_restaurants
+
         try:
             # explicit wait of element until page loads
             WebDriverWait(driver, timeout=WAIT_IS_LAST_PAGE).until(
@@ -168,14 +168,40 @@ def get_urls_restaurants(driver: webdriver.Chrome) -> list[str]:
             driver.find_element(*A_NEXT_SEARCH_PAGE).click()
 
 
+def collect_restaurant_data(driver: webdriver.Chrome,
+                            url: str,
+                            restaurant_data: dict = None
+                            ) -> dict:
+    """ Directing restaurant url and collect all restaurant data in dictionary """
+
+    # if restaurant data was not pass as argument, define new dict
+    if restaurant_data is None:
+        restaurant_data = {}
+
+    # get restaurant ID using regular expression
+    id_restaurant = re.search(r'(?<=-d)\d+(?=-)', url).group(0)
+    restaurant_data['id'] = id_restaurant
+
+    # load restaurant page
+    driver.get(url)
+    # sleep until restaurant page loading
+    time.sleep(SLEEP_RESTAURANT)
+
+    # data collecting
+    restaurant_data = get_restaurant_info(driver, restaurant_data)
+    restaurant_data['reviews'] = get_reviews_info(driver, id_restaurant)
+
+    return restaurant_data
+
+
 def get_restaurant_info(driver: webdriver.Chrome, restaurant_data: dict) -> dict:
     """ Collect information about restaurant """
 
-    # # wait until restaurant <h1> tag with name is located on page.
-    # # here is no data appending to keep order in dict, just waiting until name is located
-    # WebDriverWait(driver, timeout=WAIT_RESTAURANT_NAME).until(
-    #     ec.presence_of_element_located(H1_NAME)
-    # )
+    # wait until restaurant <h1> tag with name is located on page.
+    # here is no data appending to keep order in dict, just waiting until name is located
+    WebDriverWait(driver, timeout=WAIT_RESTAURANT_NAME).until(
+        ec.presence_of_element_located(H1_NAME)
+    )
 
     # rating number in search
     try:
@@ -205,14 +231,14 @@ def get_restaurant_info(driver: webdriver.Chrome, restaurant_data: dict) -> dict
     except TimeoutException:
         pass
 
-    is_schedule_exists = False
     # get working hours
     try:
         # press button to get full schedule
         driver.find_element(*BUTTON_POPUP_SCHEDULE).click()
         is_schedule_exists = True
     except NoSuchElementException:
-        pass
+        # schedule does not exists
+        is_schedule_exists = False
 
     if is_schedule_exists:
         # iterate over every div with hours in schedule
@@ -244,7 +270,7 @@ def get_restaurant_info(driver: webdriver.Chrome, restaurant_data: dict) -> dict
         except NoSuchElementException:
             pass
 
-        return restaurant_data
+    return restaurant_data
 
 
 def get_reviews_info(driver: webdriver.Chrome,
@@ -258,6 +284,11 @@ def get_reviews_info(driver: webdriver.Chrome,
     count_reviews = 0
     # page_before may be defined later after "Access Denied", it's to skip already seen pages
     page_before = None
+
+    # check if any review exists on page
+    if len(driver.find_elements(*DIV_REVIEW_CONTAINER)) == 0:
+        logging.info(f'0 reviews for {id_restaurant=}')
+        return {}
 
     while True:
 
@@ -281,12 +312,8 @@ def get_reviews_info(driver: webdriver.Chrome,
         # sleep while reviews page loading
         time.sleep(SLEEP_REVIEWS_PAGE)
 
-        # parse current page number
-        page = WebDriverWait(driver, timeout=WAIT_PAGE_NUMBER).until(
-            ec.presence_of_element_located(CURRENT_PAGE_NUMBER)
-        ).text
-        # str to int
-        page = int(page)
+        # there is no pagination if it's single review page
+        is_only_one_page, page = is_single_page(driver)
 
         # define counter to log how many reviews collected
         count_reviews_before = len(reviews_data)
@@ -294,8 +321,6 @@ def get_reviews_info(driver: webdriver.Chrome,
         for div_review in driver.find_elements(*DIV_REVIEW_CONTAINER):
 
             # check if max reviews for restaurant already collected
-            count_reviews = len(reviews_data)
-            # logging.info(f'{count_reviews=}\n{count_reviews_before=}')
             if MAX_REVIEWS_PER_RESTAURANT == count_reviews:
                 logging.info(f'Collected {count_reviews} reviews for {id_restaurant=}.'
                              f' From {page=} new reviews {count_reviews - count_reviews_before}')
@@ -310,22 +335,37 @@ def get_reviews_info(driver: webdriver.Chrome,
                 id_review, review_data = get_one_review(driver, div_review)
                 # append review data to restaurant data
                 reviews_data[id_review] = review_data
-            except Exception as ex:
+            except Exception:
+                # reload page
                 driver.refresh()
+                # check string part contain in html
                 if 'Access Denied' in driver.page_source:
+                    # Getting url for current driver to remember current page of reviews. This is useless here,
+                    # because tripadvisor redirecting new profile to first page...
                     url_before = driver.current_url
+                    # remember page to skip in after driver reload
                     page_before = page
+                    # close driver at all
                     driver.quit()
+                    # delete driver object from memory
                     del driver
                     logging.info(f'Access denied, rebooting browser. {url_before=}')
+                    # get new driver
                     driver = get_driver()
+                    # directing to previous URL
                     driver.get(url_before)
                     break
                 else:
+                    # any other exception shouldn't be handled for now
                     raise
         else:
+            count_reviews = len(reviews_data)
             logging.info(f'Collected {count_reviews} reviews for {id_restaurant=}.'
                          f' From {page=} new reviews {count_reviews - count_reviews_before}')
+
+            # return if page is only one
+            if is_only_one_page:
+                return reviews_data
 
             # moving to button next page
             ActionChains(driver).move_to_element(
@@ -449,30 +489,19 @@ def get_one_review(driver: webdriver.Chrome, div_review: WebElement) -> tuple[st
     return id_review, review_data
 
 
-def collect_restaurant_data(driver: webdriver.Chrome,
-                            url: str,
-                            restaurant_data: dict = None
-                            ) -> dict:
-    """ Directing restaurant url and collect all restaurant data in dictionary """
-
-    # if restaurant data was not pass as argument, define new dict
-    if restaurant_data is None:
-        restaurant_data = {}
-
-    # get restaurant ID using regular expression
-    id_restaurant = re.search(r'(?<=-d)\d+(?=-)', url).group(0)
-    restaurant_data['id'] = id_restaurant
-
-    # load restaurant page
-    driver.get(url)
-    # sleep until restaurant page loading
-    time.sleep(SLEEP_RESTAURANT)
-
-    # data collecting
-    restaurant_data = get_restaurant_info(driver, restaurant_data)
-    restaurant_data['reviews'] = get_reviews_info(driver, id_restaurant)
-
-    return restaurant_data
+def is_single_page(driver: webdriver.Chrome) -> tuple[bool, int]:
+    try:
+        # parse current page number
+        page = WebDriverWait(driver, timeout=WAIT_PAGE_NUMBER).until(
+            ec.visibility_of_element_located(CURRENT_PAGE_NUMBER)
+        ).text
+        # str to int
+        page = int(page)
+        is_single = False
+    except TimeoutException:
+        is_single = True
+        page = 1
+    return is_single, page
 
 
 def wait_loop_with_timeout(driver: webdriver.Chrome, element_path: tuple[str, str]) -> bool:
@@ -496,6 +525,7 @@ def collect_data():
     check_input_values()
     # getting driver
     driver = get_driver()
+
     try:
         # directing URL from constants.py
         driver.get(URL)
@@ -516,15 +546,16 @@ def collect_data():
             to_excel(restaurant_data)
             logging.info(f'{i+1}/{len(urls_restaurants)} END scrapping {url_restaurant=}')
         logging.info('\n')
-
     except Exception as ex:
         logging.error(ex, exc_info=True)
-        driver.save_screenshot('debug.png')
-        with open('debug.html', 'w') as f:
-            f.write(driver.page_source)
-        logging.error('END')
-        time.sleep(999)
+        try:
+            driver.save_screenshot('debug.png')
+            with open('debug.html', 'w', encoding='utf-8') as f:
+                f.write(driver.page_source)
+        except:
+            pass
     finally:
+        # fully close driver anyway
         driver.quit()
 
 

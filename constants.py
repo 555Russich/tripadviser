@@ -5,7 +5,7 @@ from pathlib import Path
 
 """ Input settings """
 # directing this link first
-URL: str = 'https://www.tripadvisor.ru/Restaurants-g187314-Augsburg_Swabia_Bavaria.html'
+URL: str = 'https://www.tripadvisor.com/Restaurants-g187314-Augsburg_Swabia_Bavaria.html'
 # max count of restaurants to scrap
 MAX_RESTAURANTS_COUNT: int = 30
 # max count of review per restaurant to scrap
@@ -33,9 +33,9 @@ SLEEP_SEARCH: int = 0
 # sleep while loading restaurant page
 SLEEP_RESTAURANT: int = 0
 # sleep while page with reviews loading
-SLEEP_REVIEWS_PAGE: int = 0
+SLEEP_REVIEWS_PAGE: int = 5
 # sleep while loading reviewer info
-SLEEP_REVIEW_INFO: int = 0
+SLEEP_REVIEW_INFO: int = 1
 # sleep to wait until tag which will define loading is located on page.
 SLEEP_WAIT_LOADING_TAG: float = 0.1
 
@@ -43,7 +43,7 @@ SLEEP_WAIT_LOADING_TAG: float = 0.1
 # waiting if <span class="nav next disabled"> is located on page
 WAIT_IS_LAST_PAGE: int = 1
 # wait until restaurant name is located on page
-WAIT_RESTAURANT_NAME: int = 3
+WAIT_RESTAURANT_NAME: int = 10
 # wait for menu url
 WAIT_MENU_URL: int = 2
 # wait for avatar to be clickable
@@ -59,7 +59,7 @@ WAIT_CLOSE_TRANSLATION: int = 1
 # wait button change filter
 WAIT_CHANGE_FILTER: int = 3
 # wait page number
-WAIT_PAGE_NUMBER: int = 10
+WAIT_PAGE_NUMBER: int = 5
 
 # timeout if some element located/not located on page too long
 TIMEOUT_LOADING: int = 20
