@@ -17,6 +17,7 @@ from selenium.webdriver.remote.webdriver import WebElement
 # for scrolling web page
 from selenium.webdriver.common.action_chains import ActionChains
 # exceptions
+from urllib3.exceptions import MaxRetryError
 from selenium.common.exceptions import (
     NoSuchElementException,
     TimeoutException,
@@ -29,6 +30,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 from my_logging import get_logger
 # methods to handle input and output values
 from in_out_methods import check_input_values, to_excel
+# custom exceptions
+from exceptions import LoadingError
 from constants import (
     URL,
     MAX_RESTAURANTS_COUNT,
@@ -43,6 +46,7 @@ from constants import (
     SLEEP_REVIEW_INFO,
     SLEEP_WAIT_LOADING_TAG,
     SLEEP_DRIVER_REFRESH,
+    SLEEP_RETRY_GET_PAGE,
 
     WAIT_IS_LAST_PAGE,
     WAIT_RESTAURANT_NAME,
@@ -56,6 +60,8 @@ from constants import (
     WAIT_PAGE_NUMBER,
 
     TIMEOUT_LOADING,
+
+    RETRIES_LOAD_PAGE,
 
     TITLE,
     A_RESTAURANTS_HREFS,
@@ -75,6 +81,7 @@ from constants import (
     SPAN_LANGUAGE_FILTER_ALL,
     INPUT_LANGUAGE_FILTER_ALL,
     DIV_AVATAR,
+    SPAN_REVIEWER_INFO,
     DIV_LOADING_LIST_REVIEWS,
     DIV_LOADING_REVIEWER_INFO,
     DIV_ID_USER,
@@ -93,7 +100,7 @@ from constants import (
 
 def get_driver() -> webdriver.Chrome:
     """ Define settings, driver path using webdriver-manager, initialize Chrome driver"""
-    
+
     # get chrome options object to add options
     options = webdriver.ChromeOptions()
     # disable web driver mode
@@ -105,14 +112,17 @@ def get_driver() -> webdriver.Chrome:
     # get driver path using webdriver-manager
     driver_path = ChromeDriverManager().install()
     # initialize chrome webdriver
-    driver = webdriver.Chrome(service=Service(driver_path), options=options)
+    _driver = webdriver.Chrome(service=Service(driver_path), options=options)
     # set implicitly wait
-    driver.implicitly_wait(WAIT_IMPLICITLY)
-    return driver
+    _driver.implicitly_wait(WAIT_IMPLICITLY)
+    return _driver
 
 
-def get_urls_restaurants(driver: webdriver.Chrome) -> list[str]:
+def get_urls_restaurants() -> list[str]:
     """ Collect restaurants urls from search page """
+
+    # make global driver variable visible in this func
+    global driver
 
     # define list which will be returned with restaurants urls
     urls_restaurants = []
@@ -124,7 +134,7 @@ def get_urls_restaurants(driver: webdriver.Chrome) -> list[str]:
         count_urls_before = len(urls_restaurants)
 
         # if page is single there is no button for next page
-        is_only_one_page, page = is_single_page(driver)
+        is_only_one_page, page = is_single_page()
 
         # while FIRST search page loading, first located list of restaurants that we needed,
         # after that list is loading "Delivery Available", "Outdoor Seating Available" etc...
@@ -169,11 +179,11 @@ def get_urls_restaurants(driver: webdriver.Chrome) -> list[str]:
             driver.find_element(*A_NEXT_SEARCH_PAGE).click()
 
 
-def collect_restaurant_data(driver: webdriver.Chrome,
-                            url: str,
-                            restaurant_data: dict = None
-                            ) -> dict:
+def collect_restaurant_data(url: str, restaurant_data: dict = None) -> dict:
     """ Directing restaurant url and collect all restaurant data in dictionary """
+
+    # make global driver variable visible in this func
+    global driver
 
     # if restaurant data was not pass as argument, define new dict
     if restaurant_data is None:
@@ -183,20 +193,33 @@ def collect_restaurant_data(driver: webdriver.Chrome,
     id_restaurant = re.search(r'(?<=-d)\d+(?=-)', url).group(0)
     restaurant_data['id'] = id_restaurant
 
-    # load restaurant page
-    driver.get(url)
+    # load restaurant page with retries
+    for retry in range(1, RETRIES_LOAD_PAGE+1):
+        try:
+            driver.get(url)
+            # break loop if no error while loading page
+            break
+        except MaxRetryError:
+            logging.info(f'Retry №:{RETRIES_LOAD_PAGE}. Try loading {url=}')
+            if retry == RETRIES_LOAD_PAGE:
+                raise
+            time.sleep(SLEEP_RETRY_GET_PAGE)
+
     # sleep until restaurant page loading
     time.sleep(SLEEP_RESTAURANT)
 
     # data collecting
-    restaurant_data = get_restaurant_info(driver, restaurant_data)
-    restaurant_data['reviews'] = get_reviews_info(driver, id_restaurant)
+    restaurant_data = get_restaurant_info(restaurant_data)
+    restaurant_data['reviews'] = get_reviews_info(id_restaurant)
 
     return restaurant_data
 
 
-def get_restaurant_info(driver: webdriver.Chrome, restaurant_data: dict) -> dict:
+def get_restaurant_info(restaurant_data: dict) -> dict:
     """ Collect information about restaurant """
+
+    # make global driver variable visible in this func
+    global driver
 
     # wait until restaurant <h1> tag with name is located on page.
     # here is no data appending to keep order in dict, just waiting until name is located
@@ -264,20 +287,21 @@ def get_restaurant_info(driver: webdriver.Chrome, restaurant_data: dict) -> dict
         # close schedule
         driver.find_element(*BUTTON_POPUP_SCHEDULE).click()
 
-        # restaurant rating
-        try:
-            restaurant_rating = driver.find_element(*SVG_RESTAURANT_RATING).get_attribute('aria-label')
-            restaurant_data['restaurant rating'] = restaurant_rating
-        except NoSuchElementException:
-            pass
+    # restaurant rating
+    try:
+        restaurant_rating = driver.find_element(*SVG_RESTAURANT_RATING).get_attribute('aria-label')
+        restaurant_data['restaurant rating'] = restaurant_rating
+    except NoSuchElementException:
+        pass
 
     return restaurant_data
 
 
-def get_reviews_info(driver: webdriver.Chrome,
-                     id_restaurant: str
-                     ) -> dict:
+def get_reviews_info(id_restaurant: str) -> dict:
     """ Collect reviews for this restaurant. Append values to already existing lists """
+
+    # make global driver variable visible in this func
+    global driver
 
     # define dict with all reviews data
     reviews_data = {}
@@ -314,7 +338,7 @@ def get_reviews_info(driver: webdriver.Chrome,
         time.sleep(SLEEP_REVIEWS_PAGE)
 
         # there is no pagination if it's single review page
-        is_only_one_page, page = is_single_page(driver)
+        is_only_one_page, page = is_single_page()
 
         # define counter to log how many reviews collected
         count_reviews_before = len(reviews_data)
@@ -328,34 +352,37 @@ def get_reviews_info(driver: webdriver.Chrome,
 
             # get data for one review
             try:
-                id_review, review_data = get_one_review(driver, div_review)
+                id_review, review_data = get_one_review(div_review)
                 # append review data to restaurant data
                 reviews_data[id_review] = review_data
                 count_reviews = len(reviews_data)
-            except Exception:
+            except LoadingError:
+                # Getting url for current driver to remember current page of reviews. This is kind of useless here,
+                # because tripadvisor redirecting new profile to first page...
+                url_before = driver.current_url
                 # reload page
                 driver.refresh()
-                # check string part contain in html
+
+                # check if access denied just to log it
                 if 'Access Denied' in driver.page_source:
-                    # Getting url for current driver to remember current page of reviews. This is useless here,
-                    # because tripadvisor redirecting new profile to first page...
-                    url_before = driver.current_url
-                    # remember page to skip in after driver reload
-                    page_before = page
-                    # close driver at all
-                    driver.quit()
-                    # delete driver object from memory
-                    del driver
-                    logging.info(f'Access denied, rebooting browser. {url_before=}')
-                    time.sleep(SLEEP_DRIVER_REFRESH)
-                    # get new driver
-                    driver = get_driver()
-                    # directing to previous URL
-                    driver.get(url_before)
-                    break
-                else:
-                    # any other exception shouldn't be handled for now
-                    raise
+                    logging.info('Access Denied')
+
+                # remember page to skip in after driver reload
+                page_before = page
+                # close driver at all
+                driver.quit()
+                # delete driver object from memory
+                del driver
+                logging.info(f'Rebooting browser. {url_before=}')
+                time.sleep(SLEEP_DRIVER_REFRESH)
+                # get new driver
+                driver = get_driver()
+                # directing to previous URL
+                driver.get(url_before)
+                break
+            except Exception:
+                # any other exception shouldn't be handled for now
+                raise
         else:
             logging.info(f'Collected {count_reviews} reviews for {id_restaurant=}.'
                          f' From {page=} new reviews {count_reviews - count_reviews_before}')
@@ -376,7 +403,12 @@ def get_reviews_info(driver: webdriver.Chrome,
                 driver.find_element(*A_NEXT_REVIEWS_PAGE).click()
 
 
-def get_one_review(driver: webdriver.Chrome, div_review: WebElement) -> tuple[str, dict]:
+def get_one_review(div_review: WebElement) -> tuple[str, dict]:
+    """ Collect information about one review """
+
+    # make global driver variable visible in this func
+    global driver
+
     # define dict which contains information about one review
     review_data = {}
 
@@ -396,33 +428,45 @@ def get_one_review(driver: webdriver.Chrome, div_review: WebElement) -> tuple[st
     time.sleep(SLEEP_REVIEW_INFO)
 
     # wait until reviewer info loads
-    if not wait_loop_with_timeout(driver, DIV_LOADING_REVIEWER_INFO):
-        raise Exception('Probably access denied to website')
+    if not wait_loop_with_timeout(DIV_LOADING_REVIEWER_INFO):
+        raise LoadingError(f'Timeout {TIMEOUT_LOADING} seconds while loading reviewer info.'
+                           f'Probably access denied to website')
 
-    # username from <h3>
-    username = WebDriverWait(div_review, timeout=WAIT_USERNAME).until(
-        ec.presence_of_element_located(H3_USERNAME)
-    ).text
-    review_data['username'] = username
-
-    # count of reviews from this user
-    count_reviews_user = driver.find_element(*SPAN_COUNT_CONTRIBUTIONS).text
-    # get only numeric value
-    count_reviews_user = count_reviews_user.split()[0]
-    review_data['countsReview'] = count_reviews_user
-
-    # count of excellent reviews from this user
+    # check if reviewer info was loaded on page. Sometimes after click on reviewer avatar nothing happened
     try:
-        count_excellent_reviews = driver.find_element(*SPAN_EXCELLENT_REVIEWS).text
-        # count_excellent_reviews = count_excellent_reviews.strip()
-        review_data['countExcellent'] = count_excellent_reviews
+        driver.find_element(*SPAN_REVIEWER_INFO)
+        is_reviewer_info_exists = True
     except NoSuchElementException:
-        pass
+        is_reviewer_info_exists = False
 
-    # close the reviewer info <span> overlay
-    WebDriverWait(driver, timeout=WAIT_CLOSE_REVIEWER_INFO).until(
-        ec.element_to_be_clickable(DIV_CLOSE_REVIEWER_INFO)
-    ).click()
+    if is_reviewer_info_exists:
+        # username from <h3>
+        username = WebDriverWait(div_review, timeout=WAIT_USERNAME).until(
+            ec.presence_of_element_located(H3_USERNAME)
+        ).text
+        review_data['username'] = username
+
+        # count of reviews from this user
+        try:
+            count_reviews_user = driver.find_element(*SPAN_COUNT_CONTRIBUTIONS).text
+        # get only numeric value
+            count_reviews_user = count_reviews_user.split()[0]
+            review_data['countsReview'] = count_reviews_user
+        except NoSuchElementException:
+            pass
+
+        # count of excellent reviews from this user
+        try:
+            count_excellent_reviews = driver.find_element(*SPAN_EXCELLENT_REVIEWS).text
+            # count_excellent_reviews = count_excellent_reviews.strip()
+            review_data['countExcellent'] = count_excellent_reviews
+        except NoSuchElementException:
+            pass
+
+        # close the reviewer info <span> overlay
+        WebDriverWait(driver, timeout=WAIT_CLOSE_REVIEWER_INFO).until(
+            ec.element_to_be_clickable(DIV_CLOSE_REVIEWER_INFO)
+        ).click()
 
     def count_words_in_span_show_more():
         """ Get words count in SPAN_SHOW_MORE. If text value of tag contains 2 words,
@@ -469,14 +513,20 @@ def get_one_review(driver: webdriver.Chrome, div_review: WebElement) -> tuple[st
 
     if is_translation_exists:
         # while loading tag is located on page, running through loop
-        if not wait_loop_with_timeout(driver, DIV_LOADING_REVIEWER_INFO):
-            raise Exception('Probably access denied to website')
+        if not wait_loop_with_timeout(DIV_LOADING_REVIEWER_INFO):
+            raise LoadingError(f'Timeout {TIMEOUT_LOADING} seconds while loading translation.'
+                               f'Probably access denied to website')
 
         # getting translated text of review
-        text_translation = WebDriverWait(driver, timeout=WAIT_TRANSLATION_TEXT).until(
-            ec.presence_of_element_located(DIV_TRANSLATION)
-        ).text
-        review_data['translation'] = text_translation
+        try:
+            text_translation = WebDriverWait(driver, timeout=WAIT_TRANSLATION_TEXT).until(
+                ec.presence_of_element_located(DIV_TRANSLATION)
+            ).text
+            review_data['translation'] = text_translation
+        except TimeoutException:
+            # Rarely instead of translation, tripadvisor write "We are sorry, but there was a problem..."
+            # met this only once with restaurant in Saint-Petersburg
+            pass
 
         # close overlay with translation
         WebDriverWait(driver, timeout=WAIT_CLOSE_TRANSLATION).until(
@@ -486,7 +536,14 @@ def get_one_review(driver: webdriver.Chrome, div_review: WebElement) -> tuple[st
     return id_review, review_data
 
 
-def is_single_page(driver: webdriver.Chrome) -> tuple[bool, int]:
+def is_single_page() -> tuple[bool, int]:
+    """ Check if this page is only one. Same algorithm for page with reviews
+    and for page with restaurants
+    """
+
+    # define driver as global variable
+    global driver
+
     try:
         # parse current page number
         page = WebDriverWait(driver, timeout=WAIT_PAGE_NUMBER).until(
@@ -501,8 +558,12 @@ def is_single_page(driver: webdriver.Chrome) -> tuple[bool, int]:
     return is_single, page
 
 
-def wait_loop_with_timeout(driver: webdriver.Chrome, element_path: tuple[str, str]) -> bool:
+def wait_loop_with_timeout(element_path: tuple[str, str]) -> bool:
     """ Wait with timeout until some loading element is located on page """
+
+    # define driver as global variable
+    global driver
+
     # little sleep before start check
     time.sleep(SLEEP_WAIT_LOADING_TAG)
     # start timer
@@ -518,10 +579,13 @@ def wait_loop_with_timeout(driver: webdriver.Chrome, element_path: tuple[str, st
 
 
 def collect_data():
+    """ Main function for starting collection data """
+
+    # make global driver variable visible in this func
+    global driver
+
     # checking input values from constants.py
-    check_input_values()
-    # getting driver
-    driver = get_driver()
+    # check_input_values()  # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     try:
         # directing URL from constants.py
@@ -533,20 +597,23 @@ def collect_data():
             exit()
 
         # collecting restaurants urls
-        urls_restaurants = get_urls_restaurants(driver)
+        urls_restaurants = get_urls_restaurants()
         logging.info(f'Total collected {len(urls_restaurants)} restaurant urls')
 
         # iterating over restaurants urls and collecting data
         for i, url_restaurant in enumerate(urls_restaurants):
             logging.info(f'{i+1}/{len(urls_restaurants)} START scrapping {url_restaurant}')
-            restaurant_data = collect_restaurant_data(driver, url_restaurant)
+            restaurant_data = collect_restaurant_data(url_restaurant)
             to_excel(restaurant_data)
             logging.info(f'{i+1}/{len(urls_restaurants)} END scrapping {url_restaurant=}')
-        logging.info('\n')
+        logging.info('End of working\n')
     except Exception as ex:
+        # log error with traceback
         logging.error(ex, exc_info=True)
         try:
+            # take screenshot if it possible just to see what's happened
             driver.save_screenshot('debug.png')
+            # save html page if it possible just to see what's happened
             with open('debug.html', 'w', encoding='utf-8') as f:
                 f.write(driver.page_source)
         except:
@@ -556,9 +623,25 @@ def collect_data():
         driver.quit()
 
 
+def collect_data_for_urls_in_list():
+    """ Just for easy testing """
+    for url in ():
+        global URL, driver
+
+        URL = url
+        try:
+            collect_data()
+            driver = get_driver()
+        except:
+            pass
+
+
 # Check if file is running "directly"
 if __name__ == '__main__':
     # get own logger
     get_logger('scrapper.log')
+    # getting driver
+    driver = get_driver()
     # run main function
-    collect_data()
+    # collect_data()
+    collect_data_for_urls_in_list()

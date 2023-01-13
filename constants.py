@@ -5,16 +5,37 @@ from pathlib import Path
 
 """ Input settings """
 # directing this link first
-URL: str = 'https://www.tripadvisor.com/Restaurants-g187314-Augsburg_Swabia_Bavaria.html'
+URL: str = ''
+# to test
+# https://www.tripadvisor.com/Restaurants-g298507-St_Petersburg_Northwestern_District.html'
+# https://www.tripadvisor.com/Restaurants-g42139-Detroit_Michigan.html'
+# https://www.tripadvisor.com/Restaurants-g298484-Moscow_Central_Russia.html'
+# https://www.tripadvisor.com/Restaurants-g187849-Milan_Lombardy.html'
+# https://www.tripadvisor.ru/Restaurants-g155019-Toronto_Ontario.html'
+# https://www.tripadvisor.ru/Restaurants-g298507-St_Petersburg_Northwestern_District.html'
+# https://www.tripadvisor.ru/Restaurants-g298184-Tokyo_Tokyo_Prefecture_Kanto.html'
+# https://www.tripadvisor.ru/Restaurants-g187323-Berlin.html'
+# https://www.tripadvisor.ru/Restaurants-g42139-Detroit_Michigan.html'
+# https://www.tripadvisor.ru/Restaurants-g298484-Moscow_Central_Russia.html'
+# https://www.tripadvisor.ru/Restaurants-g187849-Milan_Lombardy.html'
+
+# tested
+# https://www.tripadvisor.com/Restaurants-g187314-Augsburg_Swabia_Bavaria.html
+# https://www.tripadvisor.com/Restaurants-g60763-New_York_City_New_York.html
+# https://www.tripadvisor.ru/Restaurants-g187147-Paris_Ile_de_France.html
+# https://www.tripadvisor.com/Restaurants-g155019-Toronto_Ontario.html
+# https://www.tripadvisor.com/Restaurants-g298184-Tokyo_Tokyo_Prefecture_Kanto.html
+# https://www.tripadvisor.com/Restaurants-g187323-Berlin.html
+
 # max count of restaurants to scrap
-MAX_RESTAURANTS_COUNT: int = 30
+MAX_RESTAURANTS_COUNT: int = 10  # 30
 # max count of review per restaurant to scrap
-MAX_REVIEWS_PER_RESTAURANT: int = 100
+MAX_REVIEWS_PER_RESTAURANT: int = 300  # 100
 # extension of output file
 OUTPUT_EXTENSION: str = '.xlsx'
 # string representation of filename for output file
 OUTPUT_FILEPATH: str = r'output'
-# is appending data to existing file
+# if True, replace file without asking
 APPEND_FILE: bool = True
 # define filepath for output file
 FILEPATH: Path = Path(OUTPUT_FILEPATH).with_suffix(OUTPUT_EXTENSION)
@@ -33,13 +54,15 @@ SLEEP_SEARCH: int = 0
 # sleep while loading restaurant page
 SLEEP_RESTAURANT: int = 0
 # sleep while page with reviews loading
-SLEEP_REVIEWS_PAGE: int = 5
+SLEEP_REVIEWS_PAGE: int = 0  # 5
 # sleep while loading reviewer info
-SLEEP_REVIEW_INFO: int = 1
+SLEEP_REVIEW_INFO: int = 0  # 1
 # sleep to wait until tag which will define loading is located on page.
 SLEEP_WAIT_LOADING_TAG: float = 0.1
 # sleep after driver quited
-SLEEP_DRIVER_REFRESH: int = 10
+SLEEP_DRIVER_REFRESH: int = 120
+# sleep after page urllib3.exceptions.MaxRetryError
+SLEEP_RETRY_GET_PAGE: int = 60
 
 # explicit wait https://www.selenium.dev/documentation/webdriver/waits/#explicit-wait
 # waiting if <span class="nav next disabled"> is located on page
@@ -65,6 +88,9 @@ WAIT_PAGE_NUMBER: int = 5
 
 # timeout if some element located/not located on page too long
 TIMEOUT_LOADING: int = 20
+
+# retries number to load page
+RETRIES_LOAD_PAGE: int = 3
 
 """ Elements attributes to locate them """
 # page title
@@ -108,6 +134,7 @@ DIV_REVIEW_CONTAINER = (By.CLASS_NAME, 'review-container')
 # <div> avatar of reviewer. relative search in div_review defined above
 DIV_AVATAR = (By.CLASS_NAME, 'ui_avatar')
 # <span> appears in the bottom of page after clicking on reviewer avatar
+SPAN_REVIEWER_INFO = (By.XPATH, '//span[contains(@class, "ui_overlay ui_popover")]')
 # <div> loading reviewer info and translation
 DIV_LOADING_REVIEWER_INFO = (By.XPATH,
                              '//span[contains(@class, "ui_overlay ui_popover")]//div[@class="cssLoadingSpinner"]'
