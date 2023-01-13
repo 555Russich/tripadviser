@@ -29,13 +29,18 @@ from webdriver_manager.chrome import ChromeDriverManager
 # logging customization
 from my_logging import get_logger
 # methods to handle input and output values
-from in_out_methods import check_input_values, to_excel
+from in_out_methods import (
+    check_input_values,
+    to_excel,
+    to_xml
+)
 # custom exceptions
 from exceptions import LoadingError
 from constants import (
     URL,
     MAX_RESTAURANTS_COUNT,
     MAX_REVIEWS_PER_RESTAURANT,
+    OUTPUT_EXTENSION,
 
     IS_HEADLESS,
     WAIT_IMPLICITLY,
@@ -475,7 +480,7 @@ def get_one_review(div_review: WebElement) -> tuple[str, dict]:
         span_show_more = div_review.find_element(*SPAN_SHOW_MORE)
         return len(span_show_more.text.split())
 
-    # check is button "show more" exists?
+    # check is button "show more" exists, setting flag
     try:
         div_review.find_element(*SPAN_SHOW_MORE)
         is_button_show_more_exists = True
@@ -501,7 +506,7 @@ def get_one_review(div_review: WebElement) -> tuple[str, dict]:
     date_of_visit = div_review.find_element(*DIV_DATE_VISIT).text
     review_data['date of visit'] = date_of_visit
 
-    # translation
+    # check if translation exists, setting flag
     try:
         # click button "Google Translate"
         div_review.find_element(*SPAN_TRANSLATE).click()
@@ -585,8 +590,9 @@ def collect_data():
     global driver
 
     # checking input values from constants.py
-    # check_input_values()  # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    check_input_values()
 
+    logging.info(f'START scrapping search page {URL=}')
     try:
         # directing URL from constants.py
         driver.get(URL)
@@ -602,11 +608,18 @@ def collect_data():
 
         # iterating over restaurants urls and collecting data
         for i, url_restaurant in enumerate(urls_restaurants):
-            logging.info(f'{i+1}/{len(urls_restaurants)} START scrapping {url_restaurant}')
+            logging.info(f'{i+1}/{len(urls_restaurants)} START scrapping {url_restaurant=}')
+            # collect all restaurants data
             restaurant_data = collect_restaurant_data(url_restaurant)
-            to_excel(restaurant_data)
+
+            # append collected restaurant data to file
+            if OUTPUT_EXTENSION == '.xlsx':
+                to_excel(restaurant_data)
+            elif OUTPUT_EXTENSION == '.xml':
+                to_xml(restaurant_data)
+
             logging.info(f'{i+1}/{len(urls_restaurants)} END scrapping {url_restaurant=}')
-        logging.info('End of working\n')
+        logging.info(f'END scrapping search page {URL=}\n')
     except Exception as ex:
         # log error with traceback
         logging.error(ex, exc_info=True)
@@ -618,22 +631,6 @@ def collect_data():
                 f.write(driver.page_source)
         except:
             pass
-    finally:
-        # fully close driver anyway
-        driver.quit()
-
-
-def collect_data_for_urls_in_list():
-    """ Just for easy testing """
-    for url in ():
-        global URL, driver
-
-        URL = url
-        try:
-            collect_data()
-            driver = get_driver()
-        except:
-            pass
 
 
 # Check if file is running "directly"
@@ -643,5 +640,6 @@ if __name__ == '__main__':
     # getting driver
     driver = get_driver()
     # run main function
-    # collect_data()
-    collect_data_for_urls_in_list()
+    collect_data()
+    # close browser
+    driver.quit()
