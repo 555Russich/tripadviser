@@ -5,34 +5,14 @@ from pathlib import Path
 
 """ Input settings """
 # directing this link first
-URL: str = ''
-# to test
-# https://www.tripadvisor.com/Restaurants-g298507-St_Petersburg_Northwestern_District.html'
-# https://www.tripadvisor.com/Restaurants-g42139-Detroit_Michigan.html'
-# https://www.tripadvisor.com/Restaurants-g298484-Moscow_Central_Russia.html'
-# https://www.tripadvisor.com/Restaurants-g187849-Milan_Lombardy.html'
-# https://www.tripadvisor.ru/Restaurants-g155019-Toronto_Ontario.html'
-# https://www.tripadvisor.ru/Restaurants-g298507-St_Petersburg_Northwestern_District.html'
-# https://www.tripadvisor.ru/Restaurants-g298184-Tokyo_Tokyo_Prefecture_Kanto.html'
-# https://www.tripadvisor.ru/Restaurants-g187323-Berlin.html'
-# https://www.tripadvisor.ru/Restaurants-g42139-Detroit_Michigan.html'
-# https://www.tripadvisor.ru/Restaurants-g298484-Moscow_Central_Russia.html'
-# https://www.tripadvisor.ru/Restaurants-g187849-Milan_Lombardy.html'
-
-# tested
-# https://www.tripadvisor.com/Restaurants-g187314-Augsburg_Swabia_Bavaria.html
-# https://www.tripadvisor.com/Restaurants-g60763-New_York_City_New_York.html
-# https://www.tripadvisor.ru/Restaurants-g187147-Paris_Ile_de_France.html
-# https://www.tripadvisor.com/Restaurants-g155019-Toronto_Ontario.html
-# https://www.tripadvisor.com/Restaurants-g298184-Tokyo_Tokyo_Prefecture_Kanto.html
-# https://www.tripadvisor.com/Restaurants-g187323-Berlin.html
+URL: str = 'https://www.tripadvisor.ru/Restaurants-g298484-Moscow_Central_Russia.html'
 
 # max count of restaurants to scrap
-MAX_RESTAURANTS_COUNT: int = 10  # 30
+MAX_RESTAURANTS_COUNT: int = 50
 # max count of review per restaurant to scrap
-MAX_REVIEWS_PER_RESTAURANT: int = 300  # 100
+MAX_REVIEWS_PER_RESTAURANT: int = 10
 # extension of output file
-OUTPUT_EXTENSION: str = '.xlsx'
+OUTPUT_EXTENSION: str = '.xml'
 # string representation of filename for output file
 OUTPUT_FILEPATH: str = r'output'
 # if True, replace file without asking
@@ -60,9 +40,9 @@ SLEEP_REVIEW_INFO: int = 0  # 1
 # sleep to wait until tag which will define loading is located on page.
 SLEEP_WAIT_LOADING_TAG: float = 0.1
 # sleep after driver quited
-SLEEP_DRIVER_REFRESH: int = 120
+SLEEP_DRIVER_REFRESH: int = 60
 # sleep after page urllib3.exceptions.MaxRetryError
-SLEEP_RETRY_GET_PAGE: int = 60
+SLEEP_RETRY_GET_PAGE: int = 30
 
 # explicit wait https://www.selenium.dev/documentation/webdriver/waits/#explicit-wait
 # waiting if <span class="nav next disabled"> is located on page

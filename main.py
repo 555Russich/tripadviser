@@ -17,7 +17,6 @@ from selenium.webdriver.remote.webdriver import WebElement
 # for scrolling web page
 from selenium.webdriver.common.action_chains import ActionChains
 # exceptions
-from urllib3.exceptions import MaxRetryError
 from selenium.common.exceptions import (
     NoSuchElementException,
     TimeoutException,
@@ -203,20 +202,22 @@ def collect_restaurant_data(url: str, restaurant_data: dict = None) -> dict:
     for retry in range(1, RETRIES_LOAD_PAGE+1):
         try:
             driver.get(url)
+            # sleep until restaurant page loading
+            time.sleep(SLEEP_RESTAURANT)
+
+            # data collecting
+            restaurant_data = get_restaurant_info(restaurant_data)
+            restaurant_data['reviews'] = get_reviews_info(id_restaurant)
+
             # break loop if no error while loading page
             break
-        except MaxRetryError:
-            logging.info(f'Retry №:{RETRIES_LOAD_PAGE}. Try loading {url=}')
+        except Exception as ex:
             if retry == RETRIES_LOAD_PAGE:
-                raise
+                logging.error(f'Last retry №:{RETRIES_LOAD_PAGE}.\n{ex}', exc_info=True)
+                exit(1)
+            else:
+                logging.warning(f'Retry №:{RETRIES_LOAD_PAGE}. Try loading {url=}\n{ex}', exc_info=True)
             time.sleep(SLEEP_RETRY_GET_PAGE)
-
-    # sleep until restaurant page loading
-    time.sleep(SLEEP_RESTAURANT)
-
-    # data collecting
-    restaurant_data = get_restaurant_info(restaurant_data)
-    restaurant_data['reviews'] = get_reviews_info(id_restaurant)
 
     return restaurant_data
 
@@ -229,9 +230,12 @@ def get_restaurant_info(restaurant_data: dict) -> dict:
 
     # wait until restaurant <h1> tag with name is located on page.
     # here is no data appending to keep order in dict, just waiting until name is located
-    WebDriverWait(driver, timeout=WAIT_RESTAURANT_NAME).until(
-        ec.presence_of_element_located(H1_NAME)
-    )
+    try:
+        WebDriverWait(driver, timeout=WAIT_RESTAURANT_NAME).until(
+            ec.presence_of_element_located(H1_NAME)
+        )
+    except TimeoutException:
+        raise LoadingError('No RESTAURANT_NAME on page')
 
     # rating number in search
     try:
