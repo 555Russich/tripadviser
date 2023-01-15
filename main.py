@@ -22,6 +22,7 @@ from selenium.common.exceptions import (
     NoSuchElementException,
     TimeoutException,
     StaleElementReferenceException,
+    ElementClickInterceptedException
 )
 # for auto installation of webdriver
 from webdriver_manager.chrome import ChromeDriverManager
@@ -424,11 +425,23 @@ def get_one_review(div_review: WebElement) -> tuple[str, dict]:
     ActionChains(driver).move_to_element(
         div_review.find_element(*DIV_AVATAR)
     ).perform()
-    # click on reviewer avatar. WebDriverWait takes here div_review as argument to do
-    # relative search of DIV_AVATAR
-    WebDriverWait(div_review, timeout=WAIT_AVATAR).until(
-        ec.element_to_be_clickable(DIV_AVATAR)
-    ).click()
+
+    # in loop trying to click on reviewer avatar with timeout
+    # algorithm looks similar like in wait_loop_with_timeout()
+    start_timer = time.time()
+    while time.time() - start_timer < TIMEOUT_LOADING:
+        try:
+            # click on reviewer avatar. WebDriverWait takes here div_review
+            # as argument to do relative search of DIV_AVATAR
+            WebDriverWait(div_review, timeout=WAIT_AVATAR).until(
+                ec.element_to_be_clickable(DIV_AVATAR)
+            ).click()
+            break
+        except (ElementClickInterceptedException, TimeoutException):
+            pass
+    else:
+        raise LoadingError('Unable to click on avatar even with timeout')
+
     # sleep until user info loading
     time.sleep(SLEEP_REVIEW_INFO)
 
